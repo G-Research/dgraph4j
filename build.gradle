@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+import com.github.jengelman.gradle.plugins.shadow.transformers.Transformer
+import com.github.jengelman.gradle.plugins.shadow.transformers.TransformerContext
+import org.gradle.api.file.FileTreeElement
+import shadow.org.apache.tools.zip.ZipOutputStream
+import shadow.org.apache.tools.zip.ZipEntry
+
 buildscript {
     repositories {
         maven {
@@ -44,7 +50,7 @@ apply plugin: 'maven-publish'
 apply plugin: 'signing'
 apply plugin: 'com.github.johnrengelman.shadow'
 
-group = 'uk.co.gresearch.dgraph'
+group = 'io.dgraph'
 archivesBaseName = 'dgraph4j-shaded'
 version = '21.12.0-SNAPSHOT'
 sourceCompatibility = 1.8
@@ -163,6 +169,7 @@ task fatJar(type: Jar) {
 }
 
 // create a single Jar with all dependencies shadowed (renamed)
+// inspired by https://github.com/grpc/grpc-java/blob/master/netty/shaded/build.gradle
 //import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 shadowJar {
 //    baseName = project.name + '-shaded'
@@ -171,17 +178,65 @@ shadowJar {
 //        include(dependency("com.google.protobuf:protobuf-java:"))
 //        include(dependency("io.netty::"))
 //    }
+    exclude 'META-INF/maven/**'
     relocate 'android', 'io.dgraph.dgraph4j.shaded.android'
     relocate 'com', 'io.dgraph.dgraph4j.shaded.com'
     relocate 'google', 'io.dgraph.dgraph4j.shaded.google'
     relocate 'io.grpc', 'io.dgraph.dgraph4j.shaded.io.grpc'
-    relocate 'io.grpc', 'io.dgraph.dgraph4j.shaded.io.grpc'
     relocate 'io.netty', 'io.dgraph.dgraph4j.shaded.io.netty'
     relocate 'io.perfmark', 'io.dgraph.dgraph4j.shaded.io.perfmark'
     relocate('javax', 'io.dgraph.dgraph4j.shaded.javax') {
-        include 'javax.annotation.*'
+        include 'javax.annotation.**'
     }
     relocate 'org', 'io.dgraph.dgraph4j.shaded.org'
+
+    // We have to be careful with these replacements as they must not match any
+    // string in NativeLibraryLoader, else they cause corruption. Note that
+    // this includes concatenation of string literals and constants.
+    relocate 'META-INF/native/libnetty', 'META-INF/native/libio_grpc_netty_shaded_dgraph4j'
+    relocate 'META-INF/native/netty', 'META-INF/native/io_grpc_netty_shaded_dgraph4j'
+
+    transform(NettyResourceTransformer.class)
+    mergeServiceFiles()
+}
+
+/**
+ * A Transformer which updates the Netty JAR META-INF/ resources to accurately
+ * reference shaded class names.
+ */
+class NettyResourceTransformer implements Transformer {
+
+    // A map of resource file paths to be modified
+    private Map<String, String> resources = [:]
+
+    @Override
+    boolean canTransformResource(FileTreeElement fileTreeElement) {
+        fileTreeElement.name.startsWith("META-INF/native-image/io.netty")
+    }
+
+    @Override
+    void transform(TransformerContext context) {
+        String updatedPath = context.path.replace("io.netty", "io.dgraph.dgraph4j.shaded.io.netty")
+        String updatedContent = context.is.getText().replace("io.netty", "io.dgraph.dgraph4j.shaded.io.netty")
+        resources.put(updatedPath, updatedContent)
+    }
+
+    @Override
+    boolean hasTransformedResource() {
+        resources.size() > 0
+    }
+
+    @Override
+    void modifyOutputStream(ZipOutputStream outputStream, boolean preserveFileTimestamps) {
+        for (resourceEntry in resources) {
+            ZipEntry entry = new ZipEntry(resourceEntry.key)
+            entry.time = TransformerContext.getEntryTimestamp(preserveFileTimestamps, entry.time)
+
+            outputStream.putNextEntry(entry)
+            outputStream.write(resourceEntry.value.getBytes())
+            outputStream.closeEntry()
+        }
+    }
 }
 
 // Configure Auto Relocation

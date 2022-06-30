@@ -14,4 +14,4 @@
  * limitations under the License.
  */
 
-rootProject.name = 'dgraph4j'
+rootProject.name = 'dgraph4j-shaded'
