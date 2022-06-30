@@ -19,9 +19,12 @@ buildscript {
         maven {
             url "https://plugins.gradle.org/m2/"
         }
+        mavenCentral()
+        gradlePluginPortal()
     }
     dependencies {
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.8'
+        classpath 'com.github.johnrengelman.shadow:com.github.johnrengelman.shadow.gradle.plugin:6.1.0'
     }
 }
 
@@ -37,11 +40,13 @@ apply plugin: 'com.google.protobuf'
 apply plugin: 'idea'
 apply plugin: 'com.github.sherter.google-java-format'
 apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'signing'
+apply plugin: 'com.github.johnrengelman.shadow'
 
-group = 'io.dgraph'
-archivesBaseName = 'dgraph4j'
-version = '21.12.0'
+group = 'uk.co.gresearch.dgraph'
+archivesBaseName = 'dgraph4j-shaded'
+version = '21.12.0-SNAPSHOT'
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
@@ -108,7 +113,11 @@ dependencies {
     testCompile "org.slf4j:slf4j-simple:1.7.21"
     compile "io.grpc:grpc-protobuf:${grpcVersion}"
     compile "io.grpc:grpc-netty:${grpcVersion}"
+//    compile("io.grpc:grpc-netty:${grpcVersion}") {
+//        exclude(group: 'io.netty')
+//    }
     compile "io.grpc:grpc-stub:${grpcVersion}"
+    runtime "io.netty:netty-resolver:4.1.51.Final"
 
     testCompile "io.opencensus:opencensus-api:${openCensusVersion}"
     testCompile "io.opencensus:opencensus-exporter-trace-jaeger:${openCensusVersion}"
@@ -142,7 +151,7 @@ test {
     systemProperties['org.slf4j.simpleLogger.log.io.dgraph.DgraphIntegrationTest'] = 'DEBUG'
 }
 
-//create a single Jar with all dependencies
+// create a single Jar with all dependencies
 task fatJar(type: Jar) {
     manifest {
         attributes 'Implementation-Title': 'Dgraph Client for Java',
@@ -152,6 +161,36 @@ task fatJar(type: Jar) {
     from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
     with jar
 }
+
+// create a single Jar with all dependencies shadowed (renamed)
+//import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+shadowJar {
+//    baseName = project.name + '-shaded'
+    classifier = ''
+//    dependencies {
+//        include(dependency("com.google.protobuf:protobuf-java:"))
+//        include(dependency("io.netty::"))
+//    }
+    relocate 'android', 'io.dgraph.dgraph4j.shaded.android'
+    relocate 'com', 'io.dgraph.dgraph4j.shaded.com'
+    relocate 'google', 'io.dgraph.dgraph4j.shaded.google'
+    relocate 'io.grpc', 'io.dgraph.dgraph4j.shaded.io.grpc'
+    relocate 'io.grpc', 'io.dgraph.dgraph4j.shaded.io.grpc'
+    relocate 'io.netty', 'io.dgraph.dgraph4j.shaded.io.netty'
+    relocate 'io.perfmark', 'io.dgraph.dgraph4j.shaded.io.perfmark'
+    relocate('javax', 'io.dgraph.dgraph4j.shaded.javax') {
+        include 'javax.annotation.*'
+    }
+    relocate 'org', 'io.dgraph.dgraph4j.shaded.org'
+}
+
+// Configure Auto Relocation
+//import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
+//task relocateShadowJar(type: ConfigureShadowRelocation) {
+//    target = tasks.shadowJar
+//    prefix = 'io.dgraph.dgraph4j.shaded'
+//}
+//tasks.shadowJar.dependsOn tasks.relocateShadowJar
 
 task buildJar(type: Jar)
 
@@ -182,9 +221,7 @@ task integrationTest(type: Test) {
 }
 
 artifacts {
-    archives jar
-    archives sourceJar
-    archives javadocJar
+    archives shadowJar
 }
 
 jacocoTestReport {
@@ -194,55 +231,22 @@ jacocoTestReport {
     }
 }
 
-if(project.hasProperty("ossrhUsername")) {
-  signing {
-    sign configurations.archives
-  }
-
-  uploadArchives {
-    repositories {
-      mavenDeployer {
-        beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
-
-        repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-          authentication(userName: ossrhUsername, password: ossrhPassword)
+publishing {
+    publications {
+        shadow(MavenPublication) { publication ->
+            project.shadow.component(publication)
         }
-
-        snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-          authentication(userName: ossrhUsername, password: ossrhPassword)
-        }
-
-        pom.project {
-          name 'dgraph4j'
-          packaging 'jar'
-          artifactId 'dgraph4j'
-          description 'Dgraph Java Client'
-          url 'https://github.com/dgraph-io/dgraph4j'
-
-          scm {
-            connection 'https://github.com/dgraph-io/dgraph4j.git'
-            url 'https://github.com/dgraph-io/dgraph4j'
-          }
-
-          licenses {
-            license {
-              name 'Apache License 2.0'
-              url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-              distribution 'repo'
-            }
-          }
-
-          developers {
-            developer {
-              name 'Dgraph Labs'
-            }
-          }
-        }
-      }
     }
-  }
+    repositories {
+        maven {
+            url "https://oss.sonatype.org/content/repositories/snapshots"
+            credentials {
+                username = System.getenv("OSS_USER")
+                password = System.getenv("OSS_PASS")
+            }
+        }
+    }
 }
-
 
 task version() {
     doLast {
