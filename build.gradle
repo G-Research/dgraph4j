@@ -25,12 +25,9 @@ buildscript {
         maven {
             url "https://plugins.gradle.org/m2/"
         }
-        mavenCentral()
-        gradlePluginPortal()
     }
     dependencies {
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.8'
-        classpath 'com.github.johnrengelman.shadow:com.github.johnrengelman.shadow.gradle.plugin:6.1.0'
     }
 }
 
@@ -39,6 +36,7 @@ plugins {
     id 'jacoco'
     id 'com.github.kt3k.coveralls' version '2.8.2'
     id 'com.github.sherter.google-java-format' version '0.8'
+    id 'com.github.johnrengelman.shadow' version '6.1.0'
 }
 // Apply the java plugin to add support for Java
 apply plugin: 'java'
@@ -52,7 +50,7 @@ apply plugin: 'com.github.johnrengelman.shadow'
 
 group = 'io.dgraph'
 archivesBaseName = 'dgraph4j-shaded'
-version = '21.12.0-SNAPSHOT'
+version = '21.12.0'
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
@@ -119,11 +117,7 @@ dependencies {
     testCompile "org.slf4j:slf4j-simple:1.7.21"
     compile "io.grpc:grpc-protobuf:${grpcVersion}"
     compile "io.grpc:grpc-netty:${grpcVersion}"
-//    compile("io.grpc:grpc-netty:${grpcVersion}") {
-//        exclude(group: 'io.netty')
-//    }
     compile "io.grpc:grpc-stub:${grpcVersion}"
-    runtime "io.netty:netty-resolver:4.1.51.Final"
 
     testCompile "io.opencensus:opencensus-api:${openCensusVersion}"
     testCompile "io.opencensus:opencensus-exporter-trace-jaeger:${openCensusVersion}"
@@ -157,7 +151,7 @@ test {
     systemProperties['org.slf4j.simpleLogger.log.io.dgraph.DgraphIntegrationTest'] = 'DEBUG'
 }
 
-// create a single Jar with all dependencies
+//create a single Jar with all dependencies
 task fatJar(type: Jar) {
     manifest {
         attributes 'Implementation-Title': 'Dgraph Client for Java',
@@ -168,16 +162,10 @@ task fatJar(type: Jar) {
     with jar
 }
 
-// create a single Jar with all dependencies shadowed (renamed)
-// inspired by https://github.com/grpc/grpc-java/blob/master/netty/shaded/build.gradle
-//import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+//create a single Jar with all dependencies shadowed (renamed)
+//inspired by https://github.com/grpc/grpc-java/blob/master/netty/shaded/build.gradle
 shadowJar {
-//    baseName = project.name + '-shaded'
     classifier = ''
-//    dependencies {
-//        include(dependency("com.google.protobuf:protobuf-java:"))
-//        include(dependency("io.netty::"))
-//    }
     exclude 'META-INF/maven/**'
     relocate 'android', 'io.dgraph.dgraph4j.shaded.android'
     relocate 'com', 'io.dgraph.dgraph4j.shaded.com'
@@ -189,12 +177,6 @@ shadowJar {
         include 'javax.annotation.**'
     }
     relocate 'org', 'io.dgraph.dgraph4j.shaded.org'
-
-    // We have to be careful with these replacements as they must not match any
-    // string in NativeLibraryLoader, else they cause corruption. Note that
-    // this includes concatenation of string literals and constants.
-    relocate 'META-INF/native/libnetty', 'META-INF/native/libio_grpc_netty_shaded_dgraph4j'
-    relocate 'META-INF/native/netty', 'META-INF/native/io_grpc_netty_shaded_dgraph4j'
 
     transform(NettyResourceTransformer.class)
     mergeServiceFiles()
@@ -238,14 +220,6 @@ class NettyResourceTransformer implements Transformer {
         }
     }
 }
-
-// Configure Auto Relocation
-//import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
-//task relocateShadowJar(type: ConfigureShadowRelocation) {
-//    target = tasks.shadowJar
-//    prefix = 'io.dgraph.dgraph4j.shaded'
-//}
-//tasks.shadowJar.dependsOn tasks.relocateShadowJar
 
 task buildJar(type: Jar)
 
