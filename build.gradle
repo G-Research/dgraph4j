@@ -50,7 +50,7 @@ apply plugin: 'com.github.johnrengelman.shadow'
 
 group = 'io.dgraph'
 archivesBaseName = 'dgraph4j-shaded'
-version = '21.12.0'
+version = '21.12.0-0'
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
@@ -270,8 +270,8 @@ publishing {
         maven {
             url "https://oss.sonatype.org/content/repositories/snapshots"
             credentials {
-                username = System.getenv("OSS_USER")
-                password = System.getenv("OSS_PASS")
+                username = ossrhUsername
+                password = ossrhPassword
             }
         }
     }
