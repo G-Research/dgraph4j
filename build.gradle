@@ -251,6 +251,8 @@ task integrationTest(type: Test) {
 
 artifacts {
     archives shadowJar
+    archives sourceJar
+    archives javadocJar
 }
 
 jacocoTestReport {
@@ -260,22 +262,59 @@ jacocoTestReport {
     }
 }
 
-publishing {
-    publications {
-        shadow(MavenPublication) { publication ->
-            project.shadow.component(publication)
-        }
-    }
+if(project.hasProperty("ossrhUsername")) {
+  signing {
+    sign configurations.archives
+  }
+
+  uploadArchives {
     repositories {
-        maven {
-            url "https://oss.sonatype.org/content/repositories/snapshots"
-            credentials {
-                username = ossrhUsername
-                password = ossrhPassword
-            }
+      mavenDeployer {
+        beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+        repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+          authentication(userName: ossrhUsername, password: ossrhPassword)
         }
+
+        snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+          authentication(userName: ossrhUsername, password: ossrhPassword)
+        }
+
+        pom.project {
+          name 'dgraph4j'
+          packaging 'jar'
+          artifactId 'dgraph4j-shaded'
+          description 'Dgraph Java Client (Shaded)'
+          url 'https://github.com/g-research/dgraph4j'
+
+          scm {
+            connection 'https://github.com/g-research/dgraph4j/dgraph4j.git'
+            url 'https://github.com/g-research/dgraph4j/dgraph4j'
+          }
+
+          licenses {
+            license {
+              name 'Apache License 2.0'
+              url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+              distribution 'repo'
+            }
+          }
+
+          developers {
+            developer {
+              name 'Dgraph Labs'
+            }
+          }
+        }.withXml {
+          // shadowed jar does not have any dependencies
+          // pom provided by shadow plugin is not uploaded here but the original
+          asNode().dependencies.dependency.each { dep -> dep.parent().remove(dep) }
+        }
+      }
     }
+  }
 }
+
 
 task version() {
     doLast {
